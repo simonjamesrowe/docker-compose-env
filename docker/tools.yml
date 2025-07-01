@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  tuddi:
+    image: chrisvel/tududi:latest
+    container_name: tuddi
+    ports:
+      - "3002:3002"
+    environment:
+      - TUDUDI_USER_EMAIL=${TUDUDI_USER_EMAIL}
+      - TUDUDI_USER_PASSWORD=${TUDUDI_USER_PASSWORD}
+      - TUDUDI_SESSION_SECRET=${TUDUDI_SESSION_SECRET}
+      - TUDUDI_INTERNAL_SSL_ENABLED=false
+    volumes:
+      - tududi_db:/usr/src/app/backend/db
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  tududi_db:
+
+networks:
+  app-network:
+    external: true

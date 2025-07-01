@@ -3,9 +3,14 @@
 # Start Docker Compose environment
 echo "Starting Docker Compose environment..."
 
+# Change to docker directory
+cd "$(dirname "$0")/../docker" || exit 1
+
 # List of compose files
 COMPOSE_FILES=(
     "data-stores.yml"
+    "tools.yml"
+    "reverse-proxy.yml"
     # "observability.yml"
     # "services.yml"
 )
@@ -14,6 +19,14 @@ COMPOSE_FILES=(
 if [ ! -f ".env" ]; then
     echo "Error: .env file not found. Please copy .env.template to .env and configure it."
     exit 1
+fi
+
+# Create the app-network if it doesn't exist
+if ! docker network ls | grep -q "app-network"; then
+    echo "Creating app-network..."
+    docker network create app-network
+else
+    echo "app-network already exists"
 fi
 
 # Build the docker-compose command arguments
