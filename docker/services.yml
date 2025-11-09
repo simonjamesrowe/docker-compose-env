@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  strapi-cms:
+    image: ghcr.io/simonjamesrowe/strapi-cms:${STRAPI_VERSION:-latest}
+    container_name: strapi-cms
+    restart: unless-stopped
+    ports:
+      - "1337:1337"
+    environment:
+      NODE_ENV: production
+      DATABASE_HOST: mongodb
+      DATABASE_PORT: 27017
+      DATABASE_NAME: ${STRAPI_DATABASE_NAME:-strapi}
+      DATABASE_USERNAME: ${MONGO_ROOT_USERNAME}
+      DATABASE_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      ADMIN_JWT_SECRET: ${STRAPI_ADMIN_JWT_SECRET}
+    env_file:
+      - .env
+    volumes:
+      - strapi_uploads:/app/public/uploads
+    networks:
+      - app-network
+    depends_on:
+      - mongodb
+
+  react-ui:
+    image: ghcr.io/simonjamesrowe/react-ui:${REACT_UI_VERSION:-latest}
+    container_name: react-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      API_URL: ${API_URL:-http://backend:8080}
+      GA_TRACKING_TOKEN: ${GA_TRACKING_TOKEN:-}
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
+  backend:
+    image: ghcr.io/simonjamesrowe/backend:${BACKEND_VERSION:-latest}
+    container_name: backend
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SPRING_AOT_ENABLED: false
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      CMS_URL: ${CMS_URL:-http://strapi-cms:1337}
+      ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-elasticsearch}
+      ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT:-9200}
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME:-}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-}
+      ELASTICSEARCH_SSL_ENABLED: ${ELASTICSEARCH_SSL_ENABLED:-false}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL}
+      SENDGRID_TO_EMAIL: ${SENDGRID_TO_EMAIL}
+    env_file:
+      - .env
+    networks:
+      - app-network
+    depends_on:
+      - kafka
+      - elasticsearch
+      - strapi-cms
+
+volumes:
+  strapi_uploads:
+
+networks:
+  app-network:
+    external: true
