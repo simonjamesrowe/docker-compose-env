@@ -10,9 +10,9 @@ cd "$(dirname "$0")/../docker" || exit 1
 COMPOSE_FILES=(
     "data-stores.yml"
     "tools.yml"
+    "services.yml"
     "reverse-proxy.yml"
     # "observability.yml"
-    # "services.yml"
 )
 
 # Check if .env file exists
