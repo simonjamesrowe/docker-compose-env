@@ -1,25 +1,82 @@
 #!/bin/bash
 
 # Restore backup script for MongoDB and Strapi uploads
-# Restores from ~/Downloads/sjr-backup-31Oct2021/
+# Restores from a compressed archive produced by scripts/backup.sh
 
-set -e  # Exit on error
+set -euo pipefail
+shopt -s nullglob
 
-BACKUP_DIR="$HOME/Downloads/sjr-backup-31Oct2021"
-MONGO_DUMP_DIR="$BACKUP_DIR/cms-production/cms-production"
-FILES_DIR="$BACKUP_DIR/files"
+DEFAULT_BASE_DIR="$HOME/backups"
+USER_INPUT="${1:-}"
+BACKUP_ARCHIVE=""
+EXTRACT_DIR=""
+RESTORE_ROOT=""
+
+cleanup() {
+    if [ -n "${EXTRACT_DIR:-}" ] && [ -d "$EXTRACT_DIR" ]; then
+        rm -rf "$EXTRACT_DIR"
+    fi
+}
+trap cleanup EXIT
+
+find_latest_archive() {
+    local search_dir="$1"
+    local -a matches=("$search_dir"/strapi-backup-*.tar.gz)
+    if [ ${#matches[@]} -eq 0 ]; then
+        return 1
+    fi
+    ls -1t "${matches[@]}" | head -n1
+}
+
+if [ -z "$USER_INPUT" ]; then
+    if ! BACKUP_ARCHIVE=$(find_latest_archive "$DEFAULT_BASE_DIR"); then
+        echo "Error: No strapi-backup-*.tar.gz archives found in $DEFAULT_BASE_DIR"
+        exit 1
+    fi
+    echo "Using latest archive from $DEFAULT_BASE_DIR:"
+    echo "  $BACKUP_ARCHIVE"
+elif [ -d "$USER_INPUT" ]; then
+    if ! BACKUP_ARCHIVE=$(find_latest_archive "$USER_INPUT"); then
+        echo "Error: No strapi-backup-*.tar.gz archives found in $USER_INPUT"
+        exit 1
+    fi
+else
+    BACKUP_ARCHIVE="$USER_INPUT"
+fi
+
+if [ ! -f "$BACKUP_ARCHIVE" ]; then
+    echo "Error: Backup archive not found at $BACKUP_ARCHIVE"
+    exit 1
+fi
+
+shopt -u nullglob
+
+echo "Selected backup archive: $BACKUP_ARCHIVE"
+EXTRACT_DIR=$(mktemp -d)
+echo "Extracting archive to temporary directory: $EXTRACT_DIR"
+tar -xzf "$BACKUP_ARCHIVE" -C "$EXTRACT_DIR"
+
+for dir in "$EXTRACT_DIR"/*; do
+    if [ -d "$dir" ]; then
+        RESTORE_ROOT="$dir"
+        break
+    fi
+done
+
+if [ -z "$RESTORE_ROOT" ]; then
+    echo "Error: Unable to find extracted backup directory."
+    exit 1
+fi
+
+MONGO_DUMP_DIR="$RESTORE_ROOT/mongodb/strapi"
+FILES_DIR="$RESTORE_ROOT/strapi-uploads"
 
 echo "========================================="
 echo "Backup Restore Script"
 echo "========================================="
 echo ""
 
-# Check if backup directory exists
-if [ ! -d "$BACKUP_DIR" ]; then
-    echo "Error: Backup directory not found at $BACKUP_DIR"
-    exit 1
-fi
-
+# Validate extracted contents
 if [ ! -d "$MONGO_DUMP_DIR" ]; then
     echo "Error: MongoDB dump directory not found at $MONGO_DUMP_DIR"
     exit 1
@@ -30,20 +87,23 @@ if [ ! -d "$FILES_DIR" ]; then
     exit 1
 fi
 
-echo "Backup directory found: $BACKUP_DIR"
+echo "Backup contents extracted from: $BACKUP_ARCHIVE"
+echo "Mongo dump directory: $MONGO_DUMP_DIR"
+echo "Uploads directory: $FILES_DIR"
 echo ""
 
-# Check if MongoDB container is running
-if ! docker ps | grep -q "mongodb"; then
-    echo "Error: MongoDB container is not running. Please start services first with ./start.sh"
-    exit 1
-fi
+require_container() {
+    local container="$1"
+    if ! docker ps --format '{{.Names}}' | grep -Fxq "$container"; then
+        echo "Error: Required container '$container' is not running."
+        echo "       Please start services first with ./scripts/start.sh"
+        exit 1
+    fi
+}
 
-# Check if Strapi container is running
-if ! docker ps | grep -q "strapi-cms"; then
-    echo "Error: Strapi CMS container is not running. Please start services first with ./start.sh"
-    exit 1
-fi
+# Verify required containers are running
+require_container "mongodb"
+require_container "strapi-cms"
 
 echo "Step 1: Restoring MongoDB Database..."
 echo "---------------------------------------"
@@ -79,18 +139,9 @@ echo ""
 echo "Step 2: Restoring Strapi Upload Files..."
 echo "---------------------------------------"
 
-# Create temporary directory for files
-TEMP_DIR=$(mktemp -d)
-echo "Copying files to temporary directory: $TEMP_DIR"
-cp -r "$FILES_DIR"/* "$TEMP_DIR/"
-
-# Copy files to Strapi container
+# Copy files straight from extracted archive into Strapi container
 echo "Copying upload files to Strapi container..."
-docker cp "$TEMP_DIR/." strapi-cms:/app/public/uploads/
-
-# Clean up temporary directory
-echo "Cleaning up temporary directory..."
-rm -rf "$TEMP_DIR"
+docker cp "$FILES_DIR/." strapi-cms:/app/public/uploads/
 
 # Set proper permissions in container
 echo "Setting proper permissions..."
@@ -99,13 +150,14 @@ docker exec strapi-cms chown -R node:node /app/public/uploads
 echo "✓ Strapi files restore completed successfully"
 echo ""
 
+FILE_COUNT=$(find "$FILES_DIR" -type f | wc -l | xargs)
 echo "========================================="
 echo "Restore completed successfully!"
 echo "========================================="
 echo ""
 echo "Summary:"
 echo "  - MongoDB database restored to 'strapi' database"
-echo "  - $(ls -1 "$FILES_DIR" | wc -l | xargs) files restored to Strapi uploads"
+echo "  - $FILE_COUNT files restored to Strapi uploads"
 echo ""
 echo "You may need to restart the Strapi container for changes to take effect:"
 echo "  docker restart strapi-cms"
