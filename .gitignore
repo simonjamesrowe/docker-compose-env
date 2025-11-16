@@ -11,12 +11,15 @@
 docker-compose.override.yml
 .docker/
 *.log
+.localxpose.pid
 
 # localxpose
 localxpose.log
 .localxpose/
 localxpose-*
 *.lxp
+!scripts/localxpose-start.sh
+!scripts/localxpose-stop.sh
 
 # IDE and editors
 .vscode/

@@ -17,8 +17,31 @@ services:
       - app-network
     restart: unless-stopped
 
+  conduktor:
+    image: conduktor/conduktor-platform:latest
+    container_name: conduktor
+    ports:
+      - "8088:8080"
+    environment:
+      CDK_ADMIN_EMAIL: ${CONDUKTOR_ADMIN_EMAIL:-admin@conduktor.io}
+      CDK_ADMIN_PASSWORD: ${CONDUKTOR_ADMIN_PASSWORD:-admin}
+      CDK_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-conduktor}
+      CDK_CLUSTERS_0_ID: local
+      CDK_CLUSTERS_0_NAME: Local Kafka
+      CDK_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      CDK_CLUSTERS_0_SCHEMAREGISTRY_URL: ""
+    volumes:
+      - conduktor_data:/var/conduktor
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - kafka
+      - postgres
+
 volumes:
   tududi_db:
+  conduktor_data:
 
 networks:
   app-network:
