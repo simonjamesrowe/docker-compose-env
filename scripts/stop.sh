@@ -1,10 +1,23 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DOCKER_DIR="$REPO_ROOT/docker"
+ENV_FILE="$DOCKER_DIR/.env"
+
 # Stop Docker Compose environment
 echo "Stopping Docker Compose environment..."
 
 # Change to docker directory
-cd "$(dirname "$0")/../docker" || exit 1
+cd "$DOCKER_DIR" || exit 1
+
+# Load environment if it exists (used for logging/enabled flag visibility)
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
 
 # List of compose files
 COMPOSE_FILES=(
@@ -34,6 +47,10 @@ if docker network ls | grep -q "app-network"; then
     else
         echo "app-network could not be removed (may still be in use)"
     fi
+fi
+
+if ! "$REPO_ROOT/scripts/localxpose-stop.sh"; then
+    echo "LocalXpose tunnel may still be running. Run scripts/localxpose-stop.sh manually if needed."
 fi
 
 echo "Environment stopped successfully!"
