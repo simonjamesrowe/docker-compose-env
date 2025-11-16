@@ -12,8 +12,10 @@ This is a Docker Compose environment for running a personal website (www.simonro
   - `observability.yml` - Grafana Cloud and monitoring tools
   - `services.yml` - Custom services (Strapi CMS, React UI, Backend)
 - Environment configuration:
-  - `.env` - contains secrets (not committed)
-  - `.env.template` - template for environment variables
+- `config.env` - tracked non-secret configuration
+- `config.env.template` - template for config overrides
+- `.env` - contains secrets (not committed)
+- `.env.template` - template for secrets
 - Nginx configuration in `docker/nginx/` directory
 
 ## Development Commands
@@ -26,7 +28,7 @@ This is a Docker Compose environment for running a personal website (www.simonro
    ```bash
    cp docker/.env.template docker/.env
    ```
-2. Update `.env` with your actual credentials:
+2. Edit `docker/.env` with your actual credentials and review `docker/config.env` (copy `config.env.template` if you need a clean starting point).
    - MongoDB credentials
    - Tuddi credentials
    - Strapi JWT secret
@@ -141,11 +143,16 @@ All services are accessible through Nginx reverse proxy on port 8080:
 
 ## Environment Variables
 
-Key environment variables needed in `.env`:
-- `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` - MongoDB credentials
-- `TUDUDI_USER_EMAIL`, `TUDUDI_USER_PASSWORD`, `TUDUDI_SESSION_SECRET` - Tuddi credentials
-- Strapi database connection: `DATABASE_HOST`, `DATABASE_NAME`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`
-- API keys for SendGrid, Google Analytics, Elastic APM (as needed)
+- `docker/config.env` (versioned) holds non-secret values such as service versions, URLs (`API_URL`, `CMS_URL`), database names, Kafka bootstrap servers, Kibana URL, LocalXpose toggles (excluding the token), etc.
+- `docker/.env` (gitignored) stores all secrets and credentials:
+  - `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD`
+  - `POSTGRES_USER`, `POSTGRES_PASSWORD`
+  - `TUDUDI_USER_EMAIL`, `TUDUDI_USER_PASSWORD`, `TUDUDI_SESSION_SECRET`
+  - `CONDUKTOR_ADMIN_EMAIL`, `CONDUKTOR_ADMIN_PASSWORD`
+  - `STRAPI_ADMIN_JWT_SECRET`
+  - `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `SENDGRID_TO_EMAIL`
+  - `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`
+  - `LOCALXPOSE_AUTH_TOKEN`
 
 **URL Configuration:**
 - **Internal URLs** (backend-to-backend): Services use Docker container names for direct communication

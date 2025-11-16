@@ -6,6 +6,8 @@
 .env.production
 .env.staging
 *.env
+!docker/config.env
+!docker/config.env.template
 
 # Docker
 docker-compose.override.yml

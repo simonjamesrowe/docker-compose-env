@@ -25,7 +25,7 @@ graph TB
     MongoDB -.->|Persists Data| MongoDB_Data
     
     subgraph "Configuration"
-        EnvFile[.env<br/>Secrets & Config]
+        EnvFile[config.env + .env<br/>Config & Secrets]
         NginxConf[nginx/nginx.conf<br/>Routing Rules]
     end
     
@@ -50,7 +50,8 @@ graph TB
 3. **Configure Environment**
    ```bash
    cp docker/.env.template docker/.env
-   # Edit docker/.env with your actual credentials
+   # Edit docker/.env with your secrets (passwords, tokens)
+   # Edit docker/config.env (or copy docker/config.env.template if you need a fresh base)
    ```
 
 4. **Local Domains**
@@ -120,13 +121,15 @@ Cloud URLs require the LocalXpose tunnel plus the Cloudflare DNS described later
 
 2. **Configure the tunnel**
    ```bash
-   cp docker/.env.template docker/.env  # if not already done
-   # Edit docker/.env
+   cp docker/.env.template docker/.env          # if not already done
+   cp docker/config.env.template docker/config.env  # optional reset for config values
+   # Edit docker/config.env
    LOCALXPOSE_ENABLED=true
-   LOCALXPOSE_AUTH_TOKEN=<your access token from https://localxpose.io/dashboard/access>
    LOCALXPOSE_DOMAIN=simonrowe.dev      # or a wildcard/domain you reserved
    LOCALXPOSE_TUNNEL_PORT=8080          # nginx reverse proxy inside Docker
    LOCALXPOSE_REGION=eu                 # optional override (defaults to eu)
+   # Edit docker/.env
+   LOCALXPOSE_AUTH_TOKEN=<your access token from https://localxpose.io/dashboard/access>
    ```
    `./scripts/start.sh` logs in with `loclx account login`, ensures `localxpose.tunnels.yaml` exists (creating it from the defaults above if missing), then calls `scripts/localxpose-start.sh` (a zsh helper) which runs `loclx tunnel config -f localxpose.tunnels.yaml --raw-mode …` in the background. Edit `localxpose.tunnels.yaml` to add more tunnels or tweak the reserved domain/port as needed. The PID is stored in `.localxpose.pid` and logs are written to `logs/localxpose.log`. Use `./scripts/stop.sh` or `scripts/localxpose-stop.sh` to tear the tunnel down.
 
@@ -149,8 +152,10 @@ docker-compose-env/
 │   ├── reverse-proxy.yml    # Nginx reverse proxy
 │   ├── nginx/
 │   │   └── nginx.conf       # Nginx configuration
-│   ├── .env.template        # Environment variables template
-│   └── .env                 # Your actual secrets (not committed)
+│   ├── config.env           # Shared non-secret config (committed)
+│   ├── config.env.template  # Template for config overrides
+│   ├── .env.template        # Secrets template
+│   └── .env                 # Local secrets (gitignored)
 ├── scripts/
 │   ├── start.sh             # Start all services
 │   ├── stop.sh              # Stop all services
@@ -246,55 +251,73 @@ docker-compose-env/
 
 ### Environment Variables
 
-Required variables in `docker/.env`:
+`docker/config.env` (committed) holds non-secret configuration such as versions, URLs, and feature toggles:
 
 ```bash
-# MongoDB Configuration
+# Version pins
+STRAPI_VERSION=latest
+REACT_UI_VERSION=latest
+BACKEND_VERSION=latest
+
+# Database / service configuration
+POSTGRES_DB=conduktor
+STRAPI_DATABASE_NAME=strapi
+
+# Service endpoints
+API_URL=http://backend:8080
+CMS_URL=http://strapi-cms:1337
+SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+
+# Elasticsearch defaults
+ELASTICSEARCH_HOST=elasticsearch
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_SSL_ENABLED=false
+
+# Frontend / observability
+GA_TRACKING_TOKEN=
+KIBANA_PUBLIC_URL=http://kibana.simonrowe.localhost:8080
+SPRING_PROFILES_ACTIVE=prod
+
+# LocalXpose settings (token lives in .env)
+LOCALXPOSE_ENABLED=false
+LOCALXPOSE_DOMAIN=simonrowe.dev
+LOCALXPOSE_TUNNEL_PORT=8080
+LOCALXPOSE_REGION=eu
+LOCALXPOSE_EXTRA_ARGS=
+```
+
+`docker/.env` (gitignored) stores secrets and private credentials:
+
+```bash
+# MongoDB credentials
 MONGO_ROOT_USERNAME=root
 MONGO_ROOT_PASSWORD=your_secure_password_here
 
-# PostgreSQL Configuration
+# PostgreSQL credentials
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_secure_password_here
-POSTGRES_DB=conduktor
 
-# Tududi Configuration
+# Tududi credentials
 TUDUDI_USER_EMAIL=your_email@example.com
 TUDUDI_USER_PASSWORD=your_secure_password_here
 TUDUDI_SESSION_SECRET=your_generated_hash_here
 
-# Conduktor Configuration
-CONDUKTOR_ADMIN_EMAIL=admin@conduktor.io
+# Conduktor admin credentials
+CONDUKTOR_ADMIN_EMAIL=admin@example.com
 CONDUKTOR_ADMIN_PASSWORD=admin
 
-# Kibana Configuration (optional override for public URL)
-# KIBANA_PUBLIC_URL=https://kibana.simonrowe.dev
-
-# Strapi CMS Configuration
-STRAPI_VERSION=v0.1.3
-STRAPI_DATABASE_NAME=strapi
+# Strapi secrets
 STRAPI_ADMIN_JWT_SECRET=your_jwt_secret_here
 
-# React UI Configuration
-REACT_UI_VERSION=v0.3.0
-API_URL=http://backend:8080
-GA_TRACKING_TOKEN=
-
-# Backend Configuration
-BACKEND_VERSION=latest
+# Backend secrets
 SENDGRID_API_KEY=your_sendgrid_api_key_here
-SENDGRID_FROM_EMAIL=noreply@simonrowe.dev
+SENDGRID_FROM_EMAIL=noreply@example.com
 SENDGRID_TO_EMAIL=your_email@example.com
-SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-CMS_URL=http://strapi-cms:1337
-ELASTICSEARCH_HOST=elasticsearch
-ELASTICSEARCH_PORT=9200
 ELASTICSEARCH_USERNAME=
 ELASTICSEARCH_PASSWORD=
-ELASTICSEARCH_SSL_ENABLED=false
 
-# Spring Profiles
-SPRING_PROFILES_ACTIVE=prod
+# LocalXpose credentials
+LOCALXPOSE_AUTH_TOKEN=
 ```
 
 ### Nginx Routing
@@ -372,7 +395,7 @@ No host filesystem mounts are used for better portability across different envir
 
 ### Updating Configuration
 
-- **Environment variables**: Edit `docker/.env`
+- **Environment variables**: Edit `docker/config.env` for shared config and `docker/.env` for secrets
 - **Nginx routing**: Edit `docker/nginx/nginx.conf`
 - **Service configuration**: Modify respective `.yml` files
 

@@ -3,13 +3,17 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
-ENV_FILE="$DOCKER_DIR/.env"
+ENV_HELPER="$REPO_ROOT/scripts/lib/env.sh"
 
 # Start Docker Compose environment
 echo "Starting Docker Compose environment..."
 
 # Change to docker directory
 cd "$DOCKER_DIR" || exit 1
+
+# Load shared env helpers
+# shellcheck source=scripts/lib/env.sh
+. "$ENV_HELPER"
 
 # List of compose files
 COMPOSE_FILES=(
@@ -20,17 +24,10 @@ COMPOSE_FILES=(
     # "observability.yml"
 )
 
-# Check if .env file exists
-if [ ! -f "$ENV_FILE" ]; then
-    echo "Error: .env file not found. Please copy .env.template to .env and configure it."
+# Load environment variables for helper integrations and docker-compose
+if ! load_env_files; then
     exit 1
 fi
-
-# Load environment variables for helper integrations
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
 
 # Create the app-network if it doesn't exist
 if ! docker network ls | grep -q "app-network"; then
