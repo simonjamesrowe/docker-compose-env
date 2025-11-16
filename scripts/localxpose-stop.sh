@@ -7,17 +7,15 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
-ENV_FILE="$DOCKER_DIR/.env"
+ENV_HELPER="$REPO_ROOT/scripts/lib/env.sh"
 PID_FILE="$REPO_ROOT/.localxpose.pid"
 
-if [ ! -f "$ENV_FILE" ]; then
-    echo "LocalXpose stop skipped: .env file not found."
+# shellcheck source=scripts/lib/env.sh
+. "$ENV_HELPER"
+if ! load_env_files; then
+    echo "LocalXpose stop skipped: env files missing."
     exit 0
 fi
-
-set -a
-source "$ENV_FILE"
-set +a
 
 enabled="$(printf '%s' "${LOCALXPOSE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
 if [ "$enabled" != "true" ]; then

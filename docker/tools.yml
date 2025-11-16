@@ -1,11 +1,16 @@
 version: '3.8'
 
+x-default-env-files: &default-env-files
+  - ./config.env
+  - ./.env
+
 services:
   tuddi:
     image: chrisvel/tududi:latest
     container_name: tuddi
     ports:
       - "3002:3002"
+    env_file: *default-env-files
     environment:
       - TUDUDI_USER_EMAIL=${TUDUDI_USER_EMAIL}
       - TUDUDI_USER_PASSWORD=${TUDUDI_USER_PASSWORD}
@@ -22,6 +27,7 @@ services:
     container_name: conduktor
     ports:
       - "8088:8080"
+    env_file: *default-env-files
     environment:
       CDK_ADMIN_EMAIL: ${CONDUKTOR_ADMIN_EMAIL:-admin@conduktor.io}
       CDK_ADMIN_PASSWORD: ${CONDUKTOR_ADMIN_PASSWORD:-admin}

@@ -3,7 +3,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
-ENV_FILE="$DOCKER_DIR/.env"
+ENV_HELPER="$REPO_ROOT/scripts/lib/env.sh"
 
 # Stop Docker Compose environment
 echo "Stopping Docker Compose environment..."
@@ -12,11 +12,10 @@ echo "Stopping Docker Compose environment..."
 cd "$DOCKER_DIR" || exit 1
 
 # Load environment if it exists (used for logging/enabled flag visibility)
-if [ -f "$ENV_FILE" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+# shellcheck source=scripts/lib/env.sh
+. "$ENV_HELPER"
+if ! load_env_files; then
+    exit 1
 fi
 
 # List of compose files

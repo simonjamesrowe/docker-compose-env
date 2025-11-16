@@ -7,20 +7,17 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_DIR="$REPO_ROOT/docker"
-ENV_FILE="$DOCKER_DIR/.env"
+ENV_HELPER="$REPO_ROOT/scripts/lib/env.sh"
 PID_FILE="$REPO_ROOT/.localxpose.pid"
 CONFIG_FILE="$REPO_ROOT/localxpose.tunnels.yaml"
 LOG_FILE="$REPO_ROOT/logs/localxpose.log"
 LOCALXPOSE_BIN="${LOCALXPOSE_BIN:-loclx}"
 
-if [ ! -f "$ENV_FILE" ]; then
-    echo "LocalXpose: .env file not found at $ENV_FILE"
+# shellcheck source=scripts/lib/env.sh
+. "$ENV_HELPER"
+if ! load_env_files; then
     exit 1
 fi
-
-set -a
-source "$ENV_FILE"
-set +a
 
 enabled="$(printf '%s' "${LOCALXPOSE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
 if [ "$enabled" != "true" ]; then
