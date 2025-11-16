@@ -53,28 +53,9 @@ graph TB
    # Edit docker/.env with your actual credentials
    ```
 
-4. **Configure DNS/Hosts**
+4. **Local Domains**
 
-   Add the following entries to your `/etc/hosts` file:
-   ```bash
-   sudo nano /etc/hosts
-   ```
-
-   Add these lines:
-   ```
-   127.0.0.1 simonrowe.dev www.simonrowe.dev
-   127.0.0.1 api.simonrowe.dev
-   127.0.0.1 cms.simonrowe.dev
-   127.0.0.1 todos.simonrowe.dev
-   127.0.0.1 conduktor.simonrowe.dev
-   127.0.0.1 simonrowe.localhost www.simonrowe.localhost
-   127.0.0.1 api.simonrowe.localhost
-   127.0.0.1 cms.simonrowe.localhost
-   127.0.0.1 todos.simonrowe.localhost
-   127.0.0.1 conduktor.simonrowe.localhost
-   ```
-
-   **Note**: Modern browsers automatically resolve `.localhost` domains to `127.0.0.1`, so the `.localhost` entries are optional.
+   Nothing needs to be added to `/etc/hosts`. Modern browsers map any `*.localhost` host to `127.0.0.1` automatically, so the stack is reachable locally via `simonrowe.localhost`, `api.simonrowe.localhost`, etc. The real `simonrowe.dev` domain is only provided through LocalXpose + Cloudflare and should never be mocked via local DNS.
 
 5. **Start Services**
    ```bash
@@ -82,28 +63,80 @@ graph TB
    ```
 6. **Access Services**
 
-   **Via Nginx Reverse Proxy (Port 8080):**
-   - Main Website: http://simonrowe.dev:8080 or http://simonrowe.localhost:8080
-   - Backend API: http://api.simonrowe.dev:8080 or http://api.simonrowe.localhost:8080
-   - Strapi CMS: http://cms.simonrowe.dev:8080 or http://cms.simonrowe.localhost:8080
-   - Tuddi Todo App: http://todos.simonrowe.dev:8080 or http://todos.simonrowe.localhost:8080
-   - Conduktor Kafka UI: http://conduktor.simonrowe.dev:8080 or http://conduktor.simonrowe.localhost:8080
+   **Cloud Links (LocalXpose + Cloudflare)**
+   - Main Website: https://simonrowe.dev
+   - Backend API: https://api.simonrowe.dev
+   - Strapi CMS: https://cms.simonrowe.dev
+   - Tuddi Todo App: https://todos.simonrowe.dev
+   - Conduktor Kafka UI: https://conduktor.simonrowe.dev
 
-   **Direct Access (Bypassing Nginx):**
+   **Via Nginx Reverse Proxy (Port 8080)**
+   - Main Website: http://simonrowe.localhost:8080
+   - Backend API: http://api.simonrowe.localhost:8080
+   - Strapi CMS: http://cms.simonrowe.localhost:8080
+   - Tuddi Todo App: http://todos.simonrowe.localhost:8080
+   - Conduktor Kafka UI: http://conduktor.simonrowe.localhost:8080
+
+   **Direct Access (Bypassing Nginx)**
    - React UI: http://localhost:3000
    - Backend API: http://localhost:8081
    - Strapi CMS: http://localhost:1337
    - Tuddi: http://localhost:3002
    - Conduktor: http://localhost:8088
+   - Kibana: http://localhost:5601
    - MongoDB: localhost:27017
    - Kafka: localhost:29092
    - Elasticsearch: http://localhost:9200
    - PostgreSQL: localhost:5432
 
+   The cloud links depend on the LocalXpose tunnel and Cloudflare DNS configuration described below—without the tunnel they will not resolve.
+
 7. **Stop Services**
    ```bash
    ./scripts/stop.sh
    ```
+
+## 🔗 Service Endpoints
+
+| Service | Cloud URL (LocalXpose + Cloudflare) | Local Reverse Proxy (Nginx 8080) | Direct Access |
+| --- | --- | --- | --- |
+| Main Website (React UI) | https://simonrowe.dev | http://simonrowe.localhost:8080 | http://localhost:3000 |
+| Backend API | https://api.simonrowe.dev | http://api.simonrowe.localhost:8080 | http://localhost:8081 |
+| Strapi CMS | https://cms.simonrowe.dev | http://cms.simonrowe.localhost:8080 | http://localhost:1337 |
+| Tuddi Todo App | https://todos.simonrowe.dev | http://todos.simonrowe.localhost:8080 | http://localhost:3002 |
+| Conduktor Kafka UI | https://conduktor.simonrowe.dev | http://conduktor.simonrowe.localhost:8080 | http://localhost:8088 |
+| Kibana | — | — | http://localhost:5601 |
+
+Cloud URLs require the LocalXpose tunnel plus the Cloudflare DNS described later; local URLs and direct access continue working without the tunnel.
+
+## 🌐 LocalXpose Hosting
+
+1. **Reserve the domain with LocalXpose**
+   ```bash
+   loclx domain reserve --domain simonrowe.dev --region eu
+   loclx domain status --domain simonrowe.dev    # wait for “verified”
+   ```
+   Copy the `*.cname.loclx.io` target returned by the reserve command for DNS.
+
+2. **Configure the tunnel**
+   ```bash
+   cp docker/.env.template docker/.env  # if not already done
+   # Edit docker/.env
+   LOCALXPOSE_ENABLED=true
+   LOCALXPOSE_AUTH_TOKEN=<your access token from https://localxpose.io/dashboard/access>
+   LOCALXPOSE_DOMAIN=simonrowe.dev      # or a wildcard/domain you reserved
+   LOCALXPOSE_TUNNEL_PORT=8080          # nginx reverse proxy inside Docker
+   LOCALXPOSE_REGION=eu                 # optional override (defaults to eu)
+   ```
+   `./scripts/start.sh` logs in with `loclx account login`, ensures `localxpose.tunnels.yaml` exists (creating it from the defaults above if missing), then calls `scripts/localxpose-start.sh` (a zsh helper) which runs `loclx tunnel config -f localxpose.tunnels.yaml --raw-mode …` in the background. Edit `localxpose.tunnels.yaml` to add more tunnels or tweak the reserved domain/port as needed. The PID is stored in `.localxpose.pid` and logs are written to `logs/localxpose.log`. Use `./scripts/stop.sh` or `scripts/localxpose-stop.sh` to tear the tunnel down.
+
+3. **Cloudflare DNS**
+   - Create a proxied **CNAME** for the apex (`@`) pointing to the value returned earlier (e.g. `8kplouxq3znu.cname.loclx.io`). Cloudflare’s CNAME flattening serves it to clients as the correct `A/AAAA` records, so no manual `A` record is required.
+   - Add a second proxied **CNAME** for `*.simonrowe.dev` to the same target if you want subdomains (api, cms, todos, etc.) to resolve through the tunnel.
+   - If you must create an explicit `A` record, point it to the IP that `dig <your-value>.cname.loclx.io` currently resolves to, but be aware that LocalXpose can rotate these IPs—CNAME flattening is safer.
+   - Keep the records in “Proxied” mode so Cloudflare handles TLS and keeps the LocalXpose address hidden.
+
+Once DNS propagates you can hit `https://simonrowe.dev` (and the subdomains) through the LocalXpose tunnel without modifying `/etc/hosts`.
 
 ## 📁 Project Structure
 
@@ -122,6 +155,7 @@ docker-compose-env/
 │   ├── start.sh             # Start all services
 │   ├── stop.sh              # Stop all services
 │   └── restore-backup.sh    # Restore MongoDB and Strapi uploads from backup
+├── localxpose.tunnels.yaml  # LocalXpose tunnel config (edit to customize)
 ├── CLAUDE.md                # AI assistant instructions
 └── README.md                # This file
 ```
@@ -156,6 +190,12 @@ docker-compose-env/
 - **Ports**: `9200` (HTTP), `9300` (transport)
 - **Volume**: `elasticsearch_data`
 - **Used by**: Backend
+
+**Kibana**
+- **Image**: `docker.elastic.co/kibana/kibana:8.11.0`
+- **Port**: `5601`
+- **Access**: http://localhost:5601 (not exposed via nginx)
+- **Purpose**: UI for exploring Elasticsearch indices/logs
 
 ### Core Services
 
@@ -226,6 +266,9 @@ TUDUDI_SESSION_SECRET=your_generated_hash_here
 # Conduktor Configuration
 CONDUKTOR_ADMIN_EMAIL=admin@conduktor.io
 CONDUKTOR_ADMIN_PASSWORD=admin
+
+# Kibana Configuration (optional override for public URL)
+# KIBANA_PUBLIC_URL=https://kibana.simonrowe.dev
 
 # Strapi CMS Configuration
 STRAPI_VERSION=v0.1.3
@@ -372,5 +415,3 @@ docker restart strapi-cms
 - ARM64 support: React UI has multi-arch images; Java services use `platform: linux/amd64` for x86 emulation
 
 ---
-
-*This environment is managed with Claude AI assistant. See `CLAUDE.md` for AI context and instructions.*
