@@ -1,33 +1,42 @@
 #!/bin/bash
 
 # Backup script for MongoDB and Strapi uploads
-# Creates a timestamped backup in ~/Downloads/
+# Creates a timestamped backup in a base directory then archives it
 
-set -e  # Exit on error
+set -euo pipefail
 
+BASE_BACKUP_DIR="$HOME/backups"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_DIR="$HOME/Downloads/strapi-backup-$TIMESTAMP"
+BACKUP_NAME="strapi-backup-$TIMESTAMP"
+BACKUP_DIR="$BASE_BACKUP_DIR/$BACKUP_NAME"
 MONGO_BACKUP_DIR="$BACKUP_DIR/mongodb"
 FILES_BACKUP_DIR="$BACKUP_DIR/strapi-uploads"
+ARCHIVE_PATH="$BASE_BACKUP_DIR/$BACKUP_NAME.tar.gz"
 
 echo "========================================="
 echo "Backup Script"
 echo "========================================="
 echo ""
-echo "Backup will be created at: $BACKUP_DIR"
+echo "Base directory: $BASE_BACKUP_DIR"
+echo "Backup will be staged at: $BACKUP_DIR"
+echo "Final archive: $ARCHIVE_PATH"
 echo ""
 
-# Check if MongoDB container is running
-if ! docker ps | grep -q "mongodb"; then
-    echo "Error: MongoDB container is not running. Please start services first with ./start.sh"
-    exit 1
-fi
+# Ensure base directory exists
+mkdir -p "$BASE_BACKUP_DIR"
 
-# Check if Strapi container is running
-if ! docker ps | grep -q "strapi-cms"; then
-    echo "Error: Strapi CMS container is not running. Please start services first with ./start.sh"
-    exit 1
-fi
+require_container() {
+    local container="$1"
+    if ! docker ps --format '{{.Names}}' | grep -Fxq "$container"; then
+        echo "Error: Required container '$container' is not running."
+        echo "       Please start services first with ./scripts/start.sh"
+        exit 1
+    fi
+}
+
+# Verify required containers are running
+require_container "mongodb"
+require_container "strapi-cms"
 
 # Create backup directories
 echo "Creating backup directories..."
@@ -83,11 +92,18 @@ echo "========================================="
 echo "Backup completed successfully!"
 echo "========================================="
 echo ""
-echo "Summary:"
-echo "  - Backup location: $BACKUP_DIR"
-echo "  - MongoDB database: $MONGO_BACKUP_DIR"
-echo "  - Strapi uploads: $FILES_BACKUP_DIR ($FILE_COUNT files)"
+# Compress staged backup
+echo "Compressing backup into: $ARCHIVE_PATH"
+tar -czf "$ARCHIVE_PATH" -C "$BASE_BACKUP_DIR" "$BACKUP_NAME"
+rm -rf "$BACKUP_DIR"
+echo "✓ Compression complete; cleaned up staging directory."
 echo ""
-echo "To restore this backup, update the BACKUP_DIR variable in restore-backup.sh"
-echo "to point to: $BACKUP_DIR"
+echo "Summary:"
+echo "  - Archive: $ARCHIVE_PATH"
+echo "  - MongoDB database (pre-archive): $MONGO_BACKUP_DIR"
+echo "  - Strapi uploads (pre-archive): $FILES_BACKUP_DIR ($FILE_COUNT files)"
+echo ""
+echo "To restore this backup later, run scripts/restore-backup.sh."
+echo "It will automatically use the latest archive in $BASE_BACKUP_DIR"
+echo "or you can pass a specific archive path if needed."
 echo ""
