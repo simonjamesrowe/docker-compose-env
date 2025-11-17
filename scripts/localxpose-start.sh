@@ -78,7 +78,6 @@ fi
 echo "Starting LocalXpose tunnel(s) defined in $CONFIG_FILE"
 nohup "$LOCALXPOSE_BIN" tunnel config \
     -f "$CONFIG_FILE" \
-    --raw-mode \
     "${extra_args[@]}" \
     >>"$LOG_FILE" 2>&1 &
 pid=$!
