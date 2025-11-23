@@ -6,10 +6,9 @@ This is a Docker Compose environment for running a personal website (www.simonro
 - Docker Compose setup with multiple files in `docker/` directory
 - Scripts in `scripts/` directory in project root
 - Docker compose files:
-  - `data-stores.yml` - MongoDB, Kafka, Elastiactuacsearch
-  - `tools.yml` - Third party tools (Tuddi todo app)
+  - `data-stores.yml` - MongoDB, Kafka, Elasticsearch, Kibana, PostgreSQL
+  - `tools.yml` - Third party tools (Tuddi todo app, Conduktor Kafka UI)
   - `reverse-proxy.yml` - Nginx reverse proxy for routing
-  - `observability.yml` - Grafana Cloud and monitoring tools
   - `services.yml` - Custom services (Strapi CMS, React UI, Backend)
 - Environment configuration:
 - `config.env` - tracked non-secret configuration
@@ -19,9 +18,40 @@ This is a Docker Compose environment for running a personal website (www.simonro
 - Nginx configuration in `docker/nginx/` directory
 
 ## Development Commands
-- `./scripts/start.sh` - Start the environment
-- `./scripts/stop.sh` - Stop the environment
-- `./scripts/restore-backup.sh` - Restore MongoDB and Strapi uploads from backup
+
+### Core Environment Management
+- `./scripts/start.sh` - Start the entire Docker Compose environment
+- `./scripts/stop.sh` - Stop all services and cleanup (includes stopping Pinggy tunnel if running)
+- `./scripts/backup.sh` - Create timestamped backup of MongoDB and Strapi uploads to `~/backups/`
+- `./scripts/restore-backup.sh` - Restore from backup (auto-discovers latest or accepts custom path)
+
+### Quick Reference Commands
+```bash
+# Validate all compose files
+docker-compose -f docker/data-stores.yml -f docker/tools.yml -f docker/services.yml -f docker/reverse-proxy.yml config
+
+# View logs for a specific service
+docker logs <service-name>
+docker logs -f <service-name>  # Follow mode
+
+# Check container status
+docker ps
+docker ps -a  # Include stopped containers
+
+# Inspect service details
+docker inspect <container-name>
+
+# Network debugging
+docker network inspect app-network
+docker volume ls
+docker volume inspect <volume-name>
+
+# Connect to MongoDB
+docker exec -it mongodb mongosh -u root -p <password>
+
+# Access Kafka topics
+docker exec -it kafka kafka-topics --list --bootstrap-server localhost:9092
+```
 
 ## Setup
 1. Copy `.env.template` to `.env` in the docker directory
@@ -49,7 +79,7 @@ This environment hosts a complete personal website ecosystem with the following 
 
 **Strapi CMS** (Headless CMS)
 - Repository: `/Users/simonrowe/workspace/simonjamesrowe/strapi-cms`
-- Image: `ghcr.io/simonjamesrowe/strapi-cms:0.0.32`
+- Image: `ghcr.io/simonjamesrowe/strapi-cms:${STRAPI_VERSION}` (default: v0.1.4-arm64)
 - Version: Strapi v3.1.4 (Note: EOL, upgrade planned)
 - Port: 1337 (container), accessible via cms.simonrowe.dev
 - Purpose: Content management for blogs, jobs, skills, profile data
@@ -60,7 +90,7 @@ This environment hosts a complete personal website ecosystem with the following 
 
 **React UI** (Frontend)
 - Repository: `/Users/simonrowe/workspace/simonjamesrowe/react-ui`
-- Image: `ghcr.io/simonjamesrowe/react-ui:0.0.73`
+- Image: `ghcr.io/simonjamesrowe/react-ui:${REACT_UI_VERSION}` (default: v0.4.6-arm64)
 - Tech Stack: React 16.13.1, TypeScript, Redux, Nginx
 - Port: 80 (container), 3000 (host), accessible via simonrowe.dev
 - Purpose: Personal portfolio/resume SPA
@@ -71,7 +101,7 @@ This environment hosts a complete personal website ecosystem with the following 
 **Backend Modulith** (Unified backend)
 - Repository: `/Users/simonrowe/workspace/simonjamesrowe/backend-modulith`
 - Tech Stack: Java 21, Spring Boot 3.3.5, Gradle
-- Image: `ghcr.io/simonjamesrowe/backend:latest`
+- Image: `ghcr.io/simonjamesrowe/backend:${BACKEND_VERSION}` (default: 0.0.30-arm64)
 - Ports: 8080 (container), 8081 (host via compose)
 - Responsibilities: REST API surface, webhook ingestion, Kafka publishing/consumption, search indexing, scheduled sync jobs
 - Integrations: Strapi CMS (`http://strapi-cms:1337`), Kafka (`kafka:9092`), Elasticsearch (`http://elasticsearch:9200`), SendGrid email
@@ -187,31 +217,127 @@ Services can be exposed through a secure HTTPS tunnel via Pinggy when enabled:
 - **External URLs** (browser-to-backend): React UI uses domain-based URLs routed through nginx
   - React UI → Backend: `http://api.simonrowe.dev:8080` (proxied to backend:8080)
 
-## Backup and Restore
+## Backup and Restore Workflows
+
+### Creating a Backup
+
+To create a new backup of MongoDB database and Strapi uploads:
+
+```bash
+./scripts/backup.sh
+```
+
+This creates a compressed archive at `~/backups/strapi-backup-YYYYMMDD_HHMMSS.tar.gz` containing:
+- MongoDB dump in BSON format
+- Strapi uploaded files (images, PDFs, etc.)
+
+The backup script automatically:
+- Creates the `~/backups/` directory if it doesn't exist
+- Compresses both databases and files into a single tar.gz
+- Cleans up temporary staging directories
+- Shows progress and completion messages
 
 ### Restoring from Backup
 
-To restore MongoDB database and Strapi uploads from a backup:
+To restore from a backup:
 
-1. Ensure the backup exists at `~/Downloads/sjr-backup-31Oct2021/`
-2. Start the environment: `./scripts/start.sh`
-3. Run the restore script: `./scripts/restore-backup.sh`
-4. Restart Strapi to apply changes: `docker restart strapi-cms`
+```bash
+# Restore from latest backup (auto-discovers)
+./scripts/restore-backup.sh
+
+# Restore from specific archive
+./scripts/restore-backup.sh ~/backups/strapi-backup-20250101_120000.tar.gz
+
+# Restore from specific directory (for older backup format)
+./scripts/restore-backup.sh ~/Downloads/sjr-backup-31Oct2021/
+```
 
 The restore script will:
-- Restore MongoDB collections to the `strapi` database
-- Copy all upload files to the Strapi uploads volume
-- Set proper permissions on uploaded files
+1. Extract the backup archive to a temporary staging directory
+2. Restore MongoDB collections to the `strapi` database
+3. Copy all upload files to the Strapi uploads volume
+4. Set proper file permissions in containers
+5. Clean up temporary staging directories
 
-**Backup Structure:**
-- `~/Downloads/sjr-backup-31Oct2021/cms-production/cms-production/` - MongoDB dump (BSON format)
-- `~/Downloads/sjr-backup-31Oct2021/files/` - Strapi uploaded files (images, PDFs, etc.)
+**Note:** Ensure the environment is running before restoring (`./scripts/start.sh`). The MongoDB container must be healthy for imports to succeed.
 
 ## Related Repositories
 
 - **Strapi CMS**: `/Users/simonrowe/workspace/simonjamesrowe/strapi-cms`
 - **React UI**: `/Users/simonrowe/workspace/simonjamesrowe/react-ui`
 - **Backend Modulith**: `/Users/simonrowe/workspace/simonjamesrowe/backend-modulith`
+
+## Architecture & Design Patterns
+
+### Environment Management
+- **Config Split**: `config.env` (versioned, non-secret) + `.env` (gitignored, secrets)
+- **Template Pattern**: Both files have `.template` versions for easy setup
+- **Helper Script**: `scripts/lib/env.sh` provides `load_env_files()` to ensure both files exist
+- **Version Pinning**: Services use ARM64-compatible tags (e.g., `v0.1.4-arm64`) for consistency
+- **Override Pattern**: Compose files use `${VAR:-default}` to allow env overrides with sensible defaults
+
+### Network Architecture
+- **External Network**: `app-network` is created before compose up for inter-service communication
+- **Container Names**: Services communicate internally via container names (e.g., `strapi-cms:1337`)
+- **Reverse Proxy**: Nginx routes by Host header on port 8080
+- **Network Isolation**: Services don't expose ports directly except through nginx or specific host mappings
+
+### Data Persistence
+- **Named Volumes Only**: All data uses Docker named volumes (no host filesystem mounts)
+- **Volume List**: See "Docker Volumes" section below for complete list
+- **Backup Strategy**: Separate backup/restore scripts handle MongoDB dumps and file exports
+- **Database Initialization**: MongoDB uses authentication; credentials from environment
+
+### Service Dependencies
+- Kafka depends on Zookeeper (coordination)
+- Backend depends on Kafka, Elasticsearch, Strapi (startup order matters)
+- Strapi depends on MongoDB (database required before startup)
+- All services can restart independently due to network design
+
+### Event-Driven Architecture
+- Strapi publishes content changes to Kafka `cms-events` topic
+- Backend consumes events and triggers search indexing
+- Elasticsearch maintains full-text search indices
+- Async communication prevents tight coupling between services
+
+### Code Architecture (Backend)
+- **Clean Architecture Pattern**: Core → DataProviders → Entrypoints
+- **Modular Monolith**: Single codebase with distinct modules
+- **Module Structure**: `modules/backend`, `modules/model`, `modules/component-test`
+- **REST Surface**: All external APIs exposed through REST endpoints
+
+## Troubleshooting
+
+### Common Issues
+
+**Port Already in Use:**
+- Port 8080: Nginx reverse proxy
+- Port 3000: React UI dev server
+- Port 8081: Backend API
+- Port 1337: Strapi CMS
+- Port 27017: MongoDB
+- Port 9092/29092: Kafka
+- Port 9200: Elasticsearch
+- Port 5601: Kibana
+- Port 5432: PostgreSQL
+
+Use `lsof -i :<port>` to find conflicting processes.
+
+**MongoDB Won't Start:**
+- Check volume `mongodb_data` exists: `docker volume ls`
+- Verify credentials in `.env` match MONGO_INITDB_ROOT_USERNAME/PASSWORD
+- Check logs: `docker logs mongodb`
+
+**Services Can't Connect:**
+- Verify app-network exists: `docker network ls`
+- Check container names: `docker ps`
+- Test connectivity: `docker exec <container> ping <target-service>`
+
+**Pinggy Tunnel Not Working:**
+- Verify PINGGY_ENABLED=true in config.env
+- Check token: `echo $PINGGY_AUTH_TOKEN`
+- View tunnel process: `ps aux | grep ssh`
+- Check PID file: `cat /tmp/pinggy-tunnel.pid`
 
 ## Notes
 - Environment files contain sensitive data and should not be committed
