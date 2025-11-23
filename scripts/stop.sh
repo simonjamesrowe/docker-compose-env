@@ -27,16 +27,31 @@ COMPOSE_FILES=(
     # "observability.yml"
 )
 
-# Build the docker-compose command
-DOCKER_COMPOSE_CMD="docker-compose"
+# Build the docker-compose command with optional profile
+CMD=(docker-compose)
+localxpose_enabled="$(printf '%s' "${LOCALXPOSE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
+if [ "$localxpose_enabled" = "true" ]; then
+    CMD+=("--profile" "localxpose")
+fi
 for file in "${COMPOSE_FILES[@]}"; do
     if [ -f "$file" ]; then
-        DOCKER_COMPOSE_CMD="$DOCKER_COMPOSE_CMD -f $file"
+        CMD+=("-f" "$file")
     fi
 done
+CMD+=("down")
+
+# Stop Pinggy tunnel if running
+if [ -f "/tmp/pinggy-tunnel.pid" ]; then
+    echo "Stopping Pinggy SSH tunnel..."
+    pinggy_pid=$(cat /tmp/pinggy-tunnel.pid 2>/dev/null)
+    if [ -n "$pinggy_pid" ] && kill "$pinggy_pid" 2>/dev/null; then
+        echo "Pinggy tunnel stopped"
+    fi
+    rm -f /tmp/pinggy-tunnel.pid
+fi
 
 # Stop services
-$DOCKER_COMPOSE_CMD down
+"${CMD[@]}"
 
 # Remove the app-network if it exists and is not being used
 if docker network ls | grep -q "app-network"; then
@@ -46,10 +61,6 @@ if docker network ls | grep -q "app-network"; then
     else
         echo "app-network could not be removed (may still be in use)"
     fi
-fi
-
-if ! "$REPO_ROOT/scripts/localxpose-stop.sh"; then
-    echo "LocalXpose tunnel may still be running. Run scripts/localxpose-stop.sh manually if needed."
 fi
 
 echo "Environment stopped successfully!"

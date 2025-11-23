@@ -124,14 +124,14 @@ Cloud URLs require the LocalXpose tunnel plus the Cloudflare DNS described later
    cp docker/.env.template docker/.env          # if not already done
    cp docker/config.env.template docker/config.env  # optional reset for config values
    # Edit docker/config.env
-   LOCALXPOSE_ENABLED=true
-   LOCALXPOSE_DOMAIN=simonrowe.dev      # or a wildcard/domain you reserved
-   LOCALXPOSE_TUNNEL_PORT=8080          # nginx reverse proxy inside Docker
-   LOCALXPOSE_REGION=eu                 # optional override (defaults to eu)
+   LOCALXPOSE_ENABLED=true              # include the docker-compose localxpose profile
+   LOCALXPOSE_EXTRA_ARGS=               # optional cli flags (e.g. "--raw-mode http")
    # Edit docker/.env
    LOCALXPOSE_AUTH_TOKEN=<your access token from https://localxpose.io/dashboard/access>
+   # Edit docker/localxpose/localxpose.tunnels.yaml
+   #  Update reserved_domain/region or add tunnels; it points to nginx:80 by default.
    ```
-   `./scripts/start.sh` logs in with `loclx account login`, ensures `localxpose.tunnels.yaml` exists (creating it from the defaults above if missing), then calls `scripts/localxpose-start.sh` (a zsh helper) which runs `loclx tunnel config -f localxpose.tunnels.yaml --raw-mode …` in the background. Edit `localxpose.tunnels.yaml` to add more tunnels or tweak the reserved domain/port as needed. The PID is stored in `.localxpose.pid` and logs are written to `logs/localxpose.log`. Use `./scripts/stop.sh` or `scripts/localxpose-stop.sh` to tear the tunnel down.
+   When `LOCALXPOSE_ENABLED=true`, `./scripts/start.sh` passes `--profile localxpose` to docker-compose so the `localxpose` container defined in `docker/reverse-proxy.yml` launches alongside Nginx. The container logs are available with `docker logs localxpose`, and stopping the stack via `./scripts/stop.sh` tears the tunnel down automatically.
 
 3. **Cloudflare DNS**
    - Create a proxied **CNAME** for the apex (`@`) pointing to the value returned earlier (e.g. `8kplouxq3znu.cname.loclx.io`). Cloudflare’s CNAME flattening serves it to clients as the correct `A/AAAA` records, so no manual `A` record is required.
