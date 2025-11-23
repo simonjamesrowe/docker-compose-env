@@ -1,5 +1,0 @@
-primary:
-  type: http
-  to: localhost:8080
-  region: eu
-  reserved_domain: simonrowe.dev

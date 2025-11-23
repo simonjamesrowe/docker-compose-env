@@ -47,13 +47,30 @@ for file in "${COMPOSE_FILES[@]}"; do
     fi
 done
 
-# Start services
-echo "Running: docker-compose ${COMPOSE_ARGS[*]} up -d"
-if docker-compose "${COMPOSE_ARGS[@]}" up -d; then
+CMD=(docker-compose "${COMPOSE_ARGS[@]}" up -d)
+echo "Running: ${CMD[*]}"
+if "${CMD[@]}"; then
     echo "Environment started successfully!"
     echo "Use './stop.sh' to stop the environment"
-    if ! "$REPO_ROOT/scripts/localxpose-start.sh"; then
-        echo "LocalXpose tunnel did not start automatically. Check logs above or run scripts/localxpose-start.sh manually."
+
+    # Start Pinggy tunnel if enabled
+    pinggy_enabled="$(printf '%s' "${PINGGY_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
+    if [ "$pinggy_enabled" = "true" ]; then
+        if [ -z "${PINGGY_AUTH_TOKEN}" ]; then
+            echo "Warning: PINGGY_ENABLED is true but PINGGY_AUTH_TOKEN is not set. Skipping Pinggy tunnel."
+        else
+            echo "Starting Pinggy SSH tunnel..."
+            ssh -f -N -p 443 -o ServerAliveInterval=60 -R 0:localhost:8080 "${PINGGY_AUTH_TOKEN}@pro.pinggy.io" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                # Wait a moment for SSH to establish, then get the PID
+                sleep 1
+                # Save PID of the SSH process for later cleanup
+                pidof ssh | grep -o '[0-9]*$' > /tmp/pinggy-tunnel.pid 2>/dev/null || true
+                echo "Pinggy tunnel started successfully!"
+            else
+                echo "Warning: Failed to start Pinggy tunnel. Check your PINGGY_AUTH_TOKEN."
+            fi
+        fi
     fi
 else
     echo "Failed to start environment"

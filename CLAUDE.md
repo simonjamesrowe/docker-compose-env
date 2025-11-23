@@ -33,6 +33,7 @@ This is a Docker Compose environment for running a personal website (www.simonro
    - Tuddi credentials
    - Strapi JWT secret
    - SendGrid API keys
+   - Pinggy auth token (optional, only if enabling PINGGY_ENABLED)
    - Service versions (or use `latest`)
 3. Ensure Docker images are available:
    - Pull from GHCR: `docker login ghcr.io` (requires GitHub token)
@@ -91,6 +92,9 @@ This environment hosts a complete personal website ecosystem with the following 
 **Reverse Proxy**
 - **Nginx** - Port 8080 (host) to 80 (container), routes traffic to all services based on domain names
 
+**Public Tunneling (Optional)**
+- **Pinggy** - SSH tunnel that creates HTTPS reverse proxy to localhost:8080 (optional, controlled via PINGGY_ENABLED)
+
 ## Data Flow
 
 1. **Content Management**: Content creators → Strapi CMS → MongoDB
@@ -100,6 +104,8 @@ This environment hosts a complete personal website ecosystem with the following 
 5. **Email Notifications**: Backend → SendGrid
 
 ## Service URLs
+
+### Local Access via Nginx (Reverse Proxy)
 
 All services are accessible through Nginx reverse proxy on port 8080:
 
@@ -113,6 +119,25 @@ All services are accessible through Nginx reverse proxy on port 8080:
   - Routes to: Tuddi (container port 3002)
 - **Conduktor Kafka UI**: http://conduktor.simonrowe.dev:8080 or http://conduktor.simonrowe.localhost:8080
   - Routes to: Conduktor (container port 8080)
+
+### Public Access via Pinggy (Optional HTTPS Tunnel)
+
+Services can be exposed through a secure HTTPS tunnel via Pinggy when enabled:
+
+**Enabling Pinggy:**
+1. Sign up at https://pinggy.io/
+2. Obtain your Pinggy authentication token
+3. Add the token to `docker/.env` as `PINGGY_AUTH_TOKEN=<your_token>`
+4. Set `PINGGY_ENABLED=true` in `docker/config.env` (default is `false`)
+5. Run `./scripts/start.sh` - the Pinggy tunnel will start automatically
+
+**Tunnel Details:**
+- The SSH tunnel runs in the background and tunnels `localhost:8080` (nginx reverse proxy) through Pinggy
+- All requests are routed through the Pinggy HTTPS tunnel to your local nginx, which then routes to the appropriate service
+- Pinggy automatically assigns you a unique domain (e.g., `abc123.pinggy.io`) that maps to your services
+- To stop the tunnel, run `./scripts/stop.sh` which will clean up the SSH process
+
+**Note:** You can configure custom domains in the Pinggy dashboard if you have a wildcard domain set up
 
 **Direct Access** (bypassing Nginx):
 - React UI: http://localhost:3000
@@ -143,7 +168,7 @@ All services are accessible through Nginx reverse proxy on port 8080:
 
 ## Environment Variables
 
-- `docker/config.env` (versioned) holds non-secret values such as service versions, URLs (`API_URL`, `CMS_URL`), database names, Kafka bootstrap servers, Kibana URL, LocalXpose toggles (excluding the token), etc.
+- `docker/config.env` (versioned) holds non-secret values such as service versions, URLs (`API_URL`, `CMS_URL`), database names, Kafka bootstrap servers, Kibana URL, `PINGGY_ENABLED`, etc.
 - `docker/.env` (gitignored) stores all secrets and credentials:
   - `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD`
   - `POSTGRES_USER`, `POSTGRES_PASSWORD`
@@ -152,7 +177,7 @@ All services are accessible through Nginx reverse proxy on port 8080:
   - `STRAPI_ADMIN_JWT_SECRET`
   - `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `SENDGRID_TO_EMAIL`
   - `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`
-  - `LOCALXPOSE_AUTH_TOKEN`
+  - `PINGGY_AUTH_TOKEN` (only needed if `PINGGY_ENABLED=true`)
 
 **URL Configuration:**
 - **Internal URLs** (backend-to-backend): Services use Docker container names for direct communication
