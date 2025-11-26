@@ -60,15 +60,10 @@ if "${CMD[@]}"; then
             echo "Warning: PINGGY_ENABLED is true but PINGGY_AUTH_TOKEN is not set. Skipping Pinggy tunnel."
         else
             echo "Starting Pinggy SSH tunnel..."
-            ssh -f -N -p 443 -o ServerAliveInterval=60 -R 0:localhost:8080 "${PINGGY_AUTH_TOKEN}@pro.pinggy.io" 2>/dev/null
-            if [ $? -eq 0 ]; then
-                # Wait a moment for SSH to establish, then get the PID
-                sleep 1
-                # Save PID of the SSH process for later cleanup
-                pidof ssh | grep -o '[0-9]*$' > /tmp/pinggy-tunnel.pid 2>/dev/null || true
+            if "$REPO_ROOT/scripts/pinggy-tunnel-manager.sh" start; then
                 echo "Pinggy tunnel started successfully!"
             else
-                echo "Warning: Failed to start Pinggy tunnel. Check your PINGGY_AUTH_TOKEN."
+                echo "Warning: Failed to start Pinggy tunnel. Check your PINGGY_AUTH_TOKEN and logs."
             fi
         fi
     fi
