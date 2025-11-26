@@ -25,7 +25,22 @@ services:
     networks:
       - app-network
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1337/_health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 768M
+        reservations:
+          cpus: '0.175'
+          memory: 537M
 
   react-ui:
     image: ghcr.io/simonjamesrowe/react-ui:${REACT_UI_VERSION:-latest}
@@ -40,7 +55,22 @@ services:
     networks:
       - app-network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 256M
+        reservations:
+          cpus: '0.07'
+          memory: 179M
 
   backend:
     image: ghcr.io/simonjamesrowe/backend:${BACKEND_VERSION:-latest}
@@ -65,9 +95,26 @@ services:
     networks:
       - app-network
     depends_on:
-      - kafka
-      - elasticsearch
-      - strapi-cms
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      strapi-cms:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2.5G
+        reservations:
+          cpus: '0.7'
+          memory: 1.75G
 
 volumes:
   strapi_uploads:

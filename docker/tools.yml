@@ -21,6 +21,14 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 256M
+        reservations:
+          cpus: '0.07'
+          memory: 179M
 
   conduktor:
     image: conduktor/conduktor-platform:latest
@@ -42,8 +50,18 @@ services:
       - app-network
     restart: unless-stopped
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 1.5G
+        reservations:
+          cpus: '0.28'
+          memory: 1.05G
 
 volumes:
   tududi_db:

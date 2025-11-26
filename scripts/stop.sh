@@ -43,11 +43,7 @@ CMD+=("down")
 # Stop Pinggy tunnel if running
 if [ -f "/tmp/pinggy-tunnel.pid" ]; then
     echo "Stopping Pinggy SSH tunnel..."
-    pinggy_pid=$(cat /tmp/pinggy-tunnel.pid 2>/dev/null)
-    if [ -n "$pinggy_pid" ] && kill "$pinggy_pid" 2>/dev/null; then
-        echo "Pinggy tunnel stopped"
-    fi
-    rm -f /tmp/pinggy-tunnel.pid
+    "$REPO_ROOT/scripts/pinggy-tunnel-manager.sh" stop
 fi
 
 # Stop services

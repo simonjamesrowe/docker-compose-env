@@ -336,8 +336,190 @@ Use `lsof -i :<port>` to find conflicting processes.
 **Pinggy Tunnel Not Working:**
 - Verify PINGGY_ENABLED=true in config.env
 - Check token: `echo $PINGGY_AUTH_TOKEN`
-- View tunnel process: `ps aux | grep ssh`
-- Check PID file: `cat /tmp/pinggy-tunnel.pid`
+- View tunnel status: `./scripts/pinggy-tunnel-manager.sh status`
+- Check manager log: `tail /tmp/pinggy-tunnel.log`
+
+## Resource Limits & Optimization
+
+All services have CPU and memory limits configured to optimize performance on constrained hardware (e.g., macOS with Colima).
+
+### Resource Allocation
+
+Services are allocated resources based on their typical usage patterns:
+
+**Heavy Services (Java/JVM-based):**
+- **Kafka**: 1.2 CPU, 2.5GB RAM (message buffering)
+- **Elasticsearch**: 0.9 CPU, 2GB RAM (full-text indexing)
+- **Backend**: 1.0 CPU, 2.5GB RAM (Spring Boot REST API)
+- **Conduktor**: 0.4 CPU, 1.5GB RAM (Kafka UI)
+
+**Medium Services (Node.js/Databases):**
+- **Strapi CMS**: 0.25 CPU, 768MB RAM
+- **MongoDB**: 0.25 CPU, 512MB RAM
+- **Zookeeper**: 0.2 CPU, 512MB RAM
+
+**Light Services:**
+- **React UI**: 0.1 CPU, 256MB RAM (Nginx static)
+- **Nginx Reverse Proxy**: 0.1 CPU, 128MB RAM
+- **Kibana**: 0.15 CPU, 512MB RAM
+- **PostgreSQL**: 0.15 CPU, 256MB RAM
+- **Tuddi**: 0.1 CPU, 256MB RAM
+
+**Total: ~4.75 CPU, ~11.7GB RAM** (Example: Colima with 8 CPU, 24GB RAM reserves 50% for Docker, 50% for other processes)
+
+### Viewing Resource Usage
+
+Monitor current resource consumption:
+
+```bash
+# See live stats for all containers
+docker stats
+
+# Get summary without streaming
+docker stats --no-stream
+
+# View resource limits for a specific service
+docker inspect <container-name> | grep -A 20 '"HostConfig"'
+```
+
+### Adjusting Resource Limits
+
+To modify limits for a service, edit the corresponding compose file and update the `deploy.resources` section:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '1.0'        # Hard limit
+      memory: 2.5G       # Hard limit
+    reservations:
+      cpus: '0.7'        # Guaranteed minimum
+      memory: 1.75G      # Guaranteed minimum
+```
+
+Then restart the service:
+
+```bash
+docker-compose -f docker/data-stores.yml -f docker/services.yml up -d <service-name>
+```
+
+## Pinggy Tunnel Monitoring
+
+The Pinggy SSH tunnel now includes automatic health monitoring and periodic restarts to ensure reliable connectivity.
+
+### Automatic Monitoring
+
+Tunnel monitoring is managed by cron jobs (on macOS and Linux):
+
+**Health Check**: Every 2 minutes
+- Verifies SSH process is running
+- Checks network connectivity to localhost:8080
+- Auto-restarts tunnel if unhealthy
+
+**Forced Restart**: Every hour (at :00)
+- Preventive maintenance to keep tunnel fresh
+- Causes ~15 seconds downtime
+- Happens at predictable times
+
+### Setup (One-Time)
+
+After initial implementation, enable automatic monitoring:
+
+```bash
+./scripts/install-pinggy-cron.sh
+```
+
+This adds 2 cron jobs to your user's crontab. Verify with:
+
+```bash
+crontab -l
+```
+
+You should see two entries related to `pinggy-tunnel-manager.sh`.
+
+### Manual Tunnel Management
+
+The tunnel manager script provides these operations:
+
+```bash
+# Start tunnel (checks if already running)
+./scripts/pinggy-tunnel-manager.sh start
+
+# Stop tunnel gracefully
+./scripts/pinggy-tunnel-manager.sh stop
+
+# Force restart tunnel
+./scripts/pinggy-tunnel-manager.sh restart
+
+# Check tunnel health (called automatically by cron)
+./scripts/pinggy-tunnel-manager.sh check
+
+# View tunnel status
+./scripts/pinggy-tunnel-manager.sh status
+```
+
+### Tunnel Logs
+
+**Cron execution log**: `/tmp/pinggy-cron.log`
+```bash
+tail /tmp/pinggy-cron.log
+```
+
+**Tunnel manager log**: `/tmp/pinggy-tunnel.log`
+```bash
+tail -f /tmp/pinggy-tunnel.log  # Follow mode
+```
+
+### Expected Behavior
+
+**Reactive Recovery**: When tunnel drops unexpectedly
+- Next health check detects failure (max 2 minutes)
+- Tunnel automatically restarts
+- Expected downtime: <2 minutes
+
+**Proactive Restart**: Every hour on the hour
+- Tunnel stops gracefully (SIGTERM, wait 5s, then SIGKILL if needed)
+- Clean restart to maintain stability
+- Expected downtime: ~15 seconds
+
+**Total Availability**: >99% (52 min/hour guaranteed + reactive recovery)
+
+### Disabling Automatic Monitoring
+
+If you want to stop automatic monitoring:
+
+```bash
+./scripts/uninstall-pinggy-cron.sh
+```
+
+Then manage the tunnel manually with `start.sh` and `stop.sh`.
+
+## Health Checks
+
+All critical services have Docker health checks configured:
+
+- **Backend**: `/actuator/health` endpoint (Spring Boot)
+- **Strapi CMS**: `/_health` endpoint
+- **MongoDB**: `db.adminCommand('ping')`
+- **Kafka**: `kafka-broker-api-versions` command
+- **Elasticsearch**: `GET /_cluster/health`
+- **PostgreSQL**: `pg_isready` command
+- **Nginx**: HTTP GET to port 80
+
+Health status is visible in `docker ps` output (HEALTHY, UNHEALTHY, or STARTING).
+
+### Dependency Ordering
+
+Services wait for dependencies to be healthy before starting:
+
+```
+MongoDB (healthy) → Strapi (healthy) → Backend (healthy) → React UI
+Zookeeper (healthy) → Kafka (healthy) → Backend
+Kafka (healthy) → Conduktor
+Elasticsearch (healthy) → Kibana
+```
+
+This ensures services don't fail due to upstream dependencies not being ready.
 
 ## Notes
 - Environment files contain sensitive data and should not be committed
