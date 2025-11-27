@@ -50,10 +50,8 @@ services:
       - app-network
     restart: unless-stopped
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - kafka
+      - postgres
     deploy:
       resources:
         limits:
